@@ -1,0 +1,49 @@
+- name: Deploy GitLab and setup backup
+  hosts: localhost
+  become: true
+
+  tasks:
+    - name: Install required packages
+      apt:
+        name: [docker.io, cron]
+        state: present
+        update_cache: yes
+
+    - name: Enable and start Docker
+      service:
+        name: docker
+        enabled: yes
+        state: started
+
+    - name: Create directories for GitLab
+      file:
+        path: "/srv/gitlab/{{ item }}"
+        state: directory
+        recurse: yes
+      loop: [config, logs, data]
+
+    - name: Run GitLab Docker container
+      docker_container:
+        name: gitlab
+        image: gitlab/gitlab-ce:latest
+        restart_policy: always
+        ports:
+          - "80:80"
+        volumes:
+          - "/srv/gitlab/config:/etc/gitlab"
+          - "/srv/gitlab/logs:/var/log/gitlab"
+          - "/srv/gitlab/data:/var/opt/gitlab"
+
+    - name: Copy backup script
+      copy:
+        src: files/gitlab-backup.sh
+        dest: /usr/local/bin/gitlab-backup.sh
+        mode: '0755'
+
+    - name: Add cron job
+      cron:
+        name: "Daily GitLab Backup"
+        minute: "0"
+        hour: "2"
+        job: "/usr/local/bin/gitlab-backup.sh"
+
